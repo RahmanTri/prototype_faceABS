@@ -1,10 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
-import 'dart:typed_data';
+// import 'dart:typed_data';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
-import 'package:image/image.dart';
+// import 'package:image/image.dart';
 
 late List<CameraDescription> cameras;
 
@@ -28,6 +29,10 @@ class FaceScanScreen extends StatefulWidget {
 
 class _FaceScanScreenState extends State<FaceScanScreen> {
   CameraController? _cameraController;
+
+  late FaceDetector _faceDetector;
+  Interpreter? _interpreter;
+
   bool _isProcessing = false;
   String _faceCodeText = "Arahkan Wajah Ke Kamera";
 
@@ -45,10 +50,12 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
 
   Future<void> _loadModel() async {
     try {
-        _interpreter = await Interpreter.fromAsset('assets/models/mobilefacenet.tflite');
-        print("Model TFlite berhasil dimuat");
+      _interpreter = await Interpreter.fromAsset(
+        'assets/models/mobilefacenet.tflite',
+      );
+      print("Model TFlite berhasil dimuat");
     } catch (e) {
-        print("Gagal memuat models $e");
+      print("Gagal memuat models $e");
     }
   }
 
@@ -62,11 +69,10 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       frontCamera,
       ResolutionPreset.low,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
+      imageFormatGroup: Platform.isAndroid
+          ? ImageFormatGroup.yuv420
+          : ImageFormatGroup.bgra8888,
     );
-
-    late FaceDetector _faceDetector;
-    Interpreter? _interpreter;
 
     await _cameraController!.initialize();
     if (!mounted) return;
@@ -80,20 +86,33 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
     });
   }
 
-  Future<void> _processCameraImage(CameraImage image) async {
-    setState(() {
-      _isProcessing = true;
-    });
+  bool _isCapturing = false;
 
-    try {
-      await Future.delayed(const Duration(milliseconds: 500));
-    } catch (e) {
-      print("error $e");
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isProcessing = false;
-        });
+  Future<void> _processCameraImage(CameraImage image) async {
+    if (_cameraController != null &&
+        _cameraController!.value.isInitialized &&
+        !_isCapturing) {
+      _isCapturing = true;
+      try {
+        XFile file = await _cameraController!.takePicture();
+
+        final inputImage = InputImage.fromFilePath(file.path);
+        final faces = await _faceDetector.processImage(inputImage);
+
+        if (faces.isNotEmpty) {
+          setState(() {
+            _faceCodeText =
+                "Wajah terdeteksi!\nTop: ${faces.first.boundingBox.top.toInt()}";
+          });
+        } else {
+          setState(() {
+            _faceCodeText = "Arahkan Wajah Ke Kamera";
+          });
+        }
+      } catch (e) {
+        print("Error ambil foto: $e");
+      } finally {
+        _isCapturing = false;
       }
     }
   }
@@ -142,6 +161,13 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
                 style: TextStyle(color: Colors.white, fontSize: 16),
                 textAlign: TextAlign.center,
               ),
+
+              // FloatingActionButton(
+              //   onPressed: () async {
+              //     _cameraController;
+              //   },
+              //   child: Icon(Icons.camera_alt),
+              // ),
             ),
           ),
         ],
