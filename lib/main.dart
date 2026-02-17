@@ -1,11 +1,11 @@
-import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
 // import 'dart:typed_data';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as imeg;
 import 'package:tflite_flutter/tflite_flutter.dart';
-// import 'package:image/image.dart';
 
 late List<CameraDescription> cameras;
 
@@ -100,9 +100,46 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
         final faces = await _faceDetector.processImage(inputImage);
 
         if (faces.isNotEmpty) {
+          final face = faces.first;
+
+          final bytes = await File(inputImage.filePath!).readAsBytes();
+          final img = imeg.decodeImage(bytes);
+
+          if (img == null) {
+            print("Gagal Decode Image");
+            return;
+          }
+
+          final faceCrop = imeg.copyCrop(
+            img,
+            x: face.boundingBox.left.toInt(),
+            y: face.boundingBox.top.toInt(),
+            width: face.boundingBox.width.toInt(),
+            height: face.boundingBox.height.toInt(),
+          );
+
+          final resized = imeg.copyResize(faceCrop, width: 112, height: 112);
+
+          var input = List.generate(1 * 112 * 112 * 3, (i) => 0.0);
+          int pixelIndex = 0;
+          for (int y = 0; y < 112; y++) {
+            for (int x = 0; x < 112; x++) {
+              final pixel = resized.getPixel(x, y);
+              int r = (pixel >> 16) & 0xFF;
+              int g = (pixel >> 8) & 0xFF;
+              int b = pixel & 0xFF;
+
+            }
+          }
+
+          var output = List.filled(128, 0.0).reshape([1, 128]);
+          _interpreter!.run(input.reshape([1, 112, 112, 3]), output);
+
+          List<double> embedding = output[0];
+
           setState(() {
             _faceCodeText =
-                "Wajah terdeteksi!\nTop: ${faces.first.boundingBox.top.toInt()}";
+                "Wajah terdeteksi!\nEmbedding; ${embedding.take(5).toList()}....";
           });
         } else {
           setState(() {
